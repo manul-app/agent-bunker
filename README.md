@@ -1,6 +1,48 @@
-# Environment Isolation for Claude CLI
+# 🛡️ AgentBunker
 
-Docker-based sandboxing for Claude Code CLI on macOS. It isolates host SSH keys, system credentials, and private files, while providing full autonomy (`--dangerously-skip-permissions`) within mounted project directories.
+> **The heavy-duty, batteries-included sandbox for autonomous AI coding agents.**  
+> Run Claude Code, Antigravity (`agy`), and OpenAI Codex in full autonomous mode (`--dangerously-skip-permissions`) without risking your host machine, SSH keys, or private networks.
+
+---
+
+## Why AgentBunker?
+
+Running AI coding agents on full auto-pilot is a massive productivity boost — no more clicking `y` to approve every file edit or bash command. However, running autonomous agents directly on your host machine is a critical security hazard:
+- Agents have access to `~/.ssh/id_rsa`, `~/.aws/credentials`, `~/.config/gcloud`, and macOS Keychain.
+- Malicious packages or prompt injections can exfiltrate credentials or connect to production databases.
+- Rogue commands can run `rm -rf` or mutate host system files.
+
+**AgentBunker** provides an isolated, hardened Linux environment where agents can run with full autonomy. It is **monstrous and batteries-included by design**: all major runtimes, package managers, local email testing, headless browsers, and database clients are pre-installed.
+
+---
+
+## Features
+
+- **Physical Host Isolation:** `~/.ssh`, macOS Keychain, host credentials, and system files are never mounted.
+- **Full Autonomy:** Pre-configured for `--dangerously-skip-permissions` so agents can work autonomously and uninterrupted.
+- **Strict Egress Firewall (`iptables`):**
+  - **SSH Outbound (Port 22):** Permanently blocked (agents cannot jump to remote servers).
+  - **External Cloud Databases:** Blocks outgoing public connections on ports `5432`, `3306`, `27017`, `6379`.
+  - **Self-Defense:** The agent user (`devuser`) has sudo rights for dev packages, but is explicitly restricted from modifying `iptables` or firewall rules.
+- **Monstrous Tooling Stack (Pre-installed):**
+  - **Runtimes:** Node.js 20, Python 3 + `venv` & `pip`, Go, PHP-CLI (with pgsql, sqlite3, curl, mbstring extensions).
+  - **Package Managers:** `npm`, `composer`, `pip`, Go modules.
+  - **Testing & Quality:** Headless Playwright (with all Chromium OS libraries), Mailpit (local SMTP & Web UI).
+  - **Search & DB:** `ripgrep`, `fd`, PostgreSQL client (`psql`).
+- **Native CLI Developer Experience:**
+  - Auto-detects your current directory: run `bunker` from `~/projects/my-app` on macOS, and the container automatically starts and mounts you inside `/projects/my-app`.
+  - Multiple root project folders supported (e.g., `~/projects`, `~/work`).
+- **Persistent State & Caches:** Claude login tokens, npm cache, Go modules, Composer cache, and Playwright browser binaries persist across restarts in `~/.claude-cache/`.
+- 🔌 **Host & Container Database Bridging:** Pre-configured to reach databases on macOS host (`host.docker.internal`) or across Docker networks.
+
+---
+
+## Supported Agents & Roadmap
+
+- [x] **Claude Code CLI** (`@anthropic-ai/claude-code`) — fully supported out of the box.
+- [ ] **Google Antigravity** (`agy`) — upcoming.
+- [ ] **OpenAI Codex CLI** — upcoming.
+- [ ] Multi-flavor minimal image builds.
 
 ---
 
@@ -9,15 +51,16 @@ Docker-based sandboxing for Claude Code CLI on macOS. It isolates host SSH keys,
 | Resource | Access Policy | Implementation |
 | :--- | :--- | :--- |
 | **Host SSH Keys (`~/.ssh`)** | **Physically Isolated** | Not mounted into container |
-| **Host Keychain & OS files** | **Physically Isolated** | Container runs in Linux VM |
+| **Host Keychain & OS Files** | **Physically Isolated** | Runs in isolated Docker Linux VM |
 | **Remote SSH Servers (Port 22)** | **BLOCKED** | Rejected by container `iptables` |
 | **External Cloud Databases** | **BLOCKED** | Public IP ports `5432`, `3306`, `27017`, `6379` rejected |
-| **Local Databases & Host** | **Configurable** | Controlled via `ALLOW_LOCAL_DB_ACCESS` (allowed by default; blocked when `false`) |
+| **Local Databases & Host** | **Configurable** | Controlled via `ALLOW_LOCAL_DB_ACCESS` (default: allowed) |
 | **Package Managers & Web** | **ALLOWED** | Outbound ports `80`, `443` (HTTPS/HTTP), `53` (DNS) |
+| **Firewall Tampering** | **PREVENTED** | `devuser` sudo policy forbids running `iptables` / `nft` |
 
 ---
 
-## Prerequisites & Host Configuration
+## 🚀 Getting Started
 
 ### 1. Configure Environment (`.env`)
 
@@ -26,7 +69,7 @@ Copy `.env.template` to `.env`:
 cp .env.template .env
 ```
 
-Edit `.env` to configure your project directories, network policies, and GitLab token:
+Configure your project directories, firewall policies, and optional Git tokens:
 ```env
 # Comma-separated list of project directories to mount into the container
 # Supports multiple directories, tilde expansion (~), and absolute paths.
@@ -40,14 +83,72 @@ GITLAB_USER=oauth2
 GITLAB_TOKEN=your_token_here
 ```
 
-Each listed folder is mounted into the container under its basename (e.g. `~/projects` -> `/projects`, `~/work` -> `/work`). When running `cclaude`, the target working directory is automatically detected from where you run the command.
+Each folder is mounted under its basename (e.g. `~/projects` -> `/projects`, `~/work` -> `/work`).
 
-### 2. GitLab Access Token
+### 2. Build the Bunker Image
 
-Create a Personal Access Token in GitLab with read access (`read_api`, `read_repository`) for your project group, and set `GITLAB_TOKEN` in `.env`.
+```bash
+./start.sh build
+```
 
+### 3. Add Shell Helpers to `~/.zshrc` (macOS)
 
-### 3. Local PostgreSQL on macOS Host (Homebrew)
+Add this line to your `~/.zshrc`:
+```bash
+source <path-to-agent-bunker>/start.sh
+```
+
+Reload your shell:
+```bash
+source ~/.zshrc
+```
+
+---
+
+## Usage
+
+### Launching Autonomous Agent (`bunker`)
+
+Navigate to any project directory inside your configured `PROJECTS_DIRS` and run `bunker`:
+
+```bash
+cd ~/projects/my-cool-app
+bunker
+```
+*(Note: `cclaude` alias is also supported for backward compatibility).*
+
+- Automatically starts the `agent-bunker` container in the background if not already running.
+- Automatically maps your current host directory to the container path (`/projects/my-cool-app`).
+- Executes Claude Code with `--dangerously-skip-permissions` for seamless autonomous operation.
+
+You can also target specific subdirectories from anywhere:
+```bash
+bunker my-cool-app
+bunker my-cool-app/backend
+```
+
+### Interactive Shell (`bunker-shell`)
+
+To jump into a bash terminal inside the container:
+```bash
+bunker-shell [project_subpath]
+```
+
+### Container Lifecycle
+
+```bash
+# Start container in background
+./start.sh
+
+# Stop container
+./start.sh stop
+```
+
+---
+
+## Connecting to Local Databases
+
+### Option A: PostgreSQL on macOS Host (Homebrew)
 
 If PostgreSQL runs directly on macOS:
 
@@ -57,86 +158,29 @@ If PostgreSQL runs directly on macOS:
    ```
 
 2. **`pg_hba.conf`**:
-   Docker Desktop for macOS routes connections through the host gateway. Depending on your Docker Desktop networking configuration, requests may originate from `192.168.65.0/24` or Docker bridge subnets. Add:
+   Docker Desktop for macOS routes connections through the host gateway (`192.168.65.0/24` or Docker bridge subnets):
    ```text
-   # Allow Docker Desktop gateway and container bridge subnets
    host    all             all             192.168.65.0/24         trust
    host    all             all             172.16.0.0/12           trust
    ```
-   > **Security Tip:** Rather than connecting with the `postgres` superuser, create a dedicated development user (e.g., `claude_dev`) with permissions granted only to the specific databases needed for your projects.
+   > **Security Tip:** Rather than connecting with the `postgres` superuser, create a dedicated development user (e.g., `agent_dev`) with permissions granted only to the specific databases needed for your projects.
 
 3. Restart PostgreSQL:
    ```bash
    brew services restart postgresql@16
    ```
 
-### 4. Databases Running in Docker Containers
+### Option B: Database in Another Docker Container
 
-If your database runs in a separate Docker container (e.g., `db-postgres-1`):
-- **Option A (Published Port):** If the database container publishes `-p 5432:5432`, Claude connects seamlessly via `host.docker.internal:5432`.
-- **Option B (Shared Docker Network):** Connect both containers to the same network:
+If your database runs in a separate Docker container:
+- **Published Port:** If it publishes `-p 5432:5432`, connect via `host.docker.internal:5432`.
+- **Shared Network:** Connect both containers to the same Docker network:
   ```bash
   docker network create dev-net
   docker network connect dev-net db-postgres-1
-  docker network connect dev-net claude-workspace
+  docker network connect dev-net agent-bunker
   ```
-  Claude can then connect directly to `db-postgres-1:5432`.
-
----
-
-## Usage
-
-### 1. Build the Docker Image
-
-```bash
-./start.sh build
-```
-
-### 2. Add Shell Helpers to `~/.zshrc`
-
-Add this line to your `~/.zshrc`:
-```bash
-source <path-to-this-repo>/start.sh
-```
-Reload your shell:
-```bash
-source ~/.zshrc
-```
-
-### 3. Launching Claude Code
-
-Navigate to any project directory under `~/projects` and run `cclaude`:
-
-```bash
-cd ~/projects/my-app
-cclaude
-```
-- It automatically starts the container if it's not already running.
-- It sets the working directory inside the container to `/projects/my-app`.
-- It executes Claude Code with `--dangerously-skip-permissions` for seamless autonomous operation.
-
-You can also specify a project directory explicitly from anywhere:
-```bash
-cclaude my-app
-cclaude my-app/backend
-```
-
-### 4. Interactive Bash Shell
-
-To enter the container shell manually:
-```bash
-cclaude-shell [project_subpath]
-```
-
-### 5. Managing the Background Container
-
-```bash
-# Start container
-./start.sh
-
-# Stop container
-./start.sh stop
-```
+  The agent can now reach `db-postgres-1:5432` directly.
 
 ---
 
@@ -152,4 +196,10 @@ cclaude-shell [project_subpath]
   - `8000`: Laravel / PHP / Python
   - `8080`: Go / APIs
   - `8025` / `1025`: Mailpit Web & SMTP
-- **Runtimes:** Node 20, Go, Python 3 + venv, PHP (with pgsql & sqlite extensions), PostgreSQL client (`psql`).
+- **Runtimes & CLI Tools:** Node 20, Python 3 + venv, Go, PHP + Composer, PostgreSQL client (`psql`), `ripgrep`, `fd`.
+
+---
+
+## License
+
+[MIT License](LICENSE) © 2026 Nick

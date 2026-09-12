@@ -1,11 +1,17 @@
 #!/bin/bash
 
 # Ensure persistent cache directories exist on host
-mkdir -p ~/.claude-cache/.claude-docker-state
-mkdir -p ~/.claude-cache/.npm-docker-cache
-mkdir -p ~/.claude-cache/.gopath-docker-cache
-mkdir -p ~/.claude-cache/.composer-docker-cache
-mkdir -p ~/.claude-cache/.playwright-docker-cache
+BUNKER_CACHE="${BUNKER_CACHE:-$HOME/.bunker-cache}"
+# Backward compatibility: link existing ~/.claude-cache if present and ~/.bunker-cache is missing
+if [ ! -e "$BUNKER_CACHE" ] && [ -d "$HOME/.claude-cache" ]; then
+    ln -s "$HOME/.claude-cache" "$BUNKER_CACHE" 2>/dev/null || true
+fi
+
+mkdir -p "$BUNKER_CACHE"/.claude-docker-state
+mkdir -p "$BUNKER_CACHE"/.npm-docker-cache
+mkdir -p "$BUNKER_CACHE"/.gopath-docker-cache
+mkdir -p "$BUNKER_CACHE"/.composer-docker-cache
+mkdir -p "$BUNKER_CACHE"/.playwright-docker-cache
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -110,26 +116,32 @@ resolve_target_dir() {
 }
 
 # Build docker image
-build-claude-env() {
-    docker build -t claude-env "$SCRIPT_DIR"
+build-bunker() {
+    docker build -t agent-bunker -t claude-env "$SCRIPT_DIR"
 }
 
-# Start workspace container
-start-claude-env() {
+# Start bunker workspace container
+start-bunker() {
     resolve_project_dirs
 
     # Check if container is already running
-    if docker ps --format '{{.Names}}' | grep -q "^claude-workspace$"; then
+    if docker ps --format '{{.Names}}' | grep -q "^agent-bunker$"; then
         return 0
     fi
 
-    echo "Starting claude-workspace container with mapped project directories:"
+    # Fallback image check
+    local image_name="agent-bunker"
+    if ! docker image inspect "$image_name" >/dev/null 2>&1 && docker image inspect "claude-env" >/dev/null 2>&1; then
+        image_name="claude-env"
+    fi
+
+    echo "Starting agent-bunker container with mapped project directories:"
     for mapping in "${PROJECT_MAPPINGS[@]}"; do
         echo "  - Host: ${mapping%%|*} -> Container: ${mapping##*|}"
     done
 
     docker run -d --rm \
-        --name claude-workspace \
+        --name agent-bunker \
         --memory="8g" \
         --cpus="4" \
         --cap-add=NET_ADMIN \
@@ -146,33 +158,33 @@ start-claude-env() {
         -p 8025:8025 \
         -p 1025:1025 \
         "${PROJECT_MOUNTS[@]}" \
-        -v ~/.claude-cache/.claude-docker-state:/home/devuser/.claude \
-        -v ~/.claude-cache/.npm-docker-cache:/home/devuser/.npm \
-        -v ~/.claude-cache/.gopath-docker-cache:/home/devuser/go \
-        -v ~/.claude-cache/.composer-docker-cache:/home/devuser/.cache/composer \
-        -v ~/.claude-cache/.playwright-docker-cache:/home/devuser/.cache/ms-playwright \
-        claude-env tail -f /dev/null
+        -v "$BUNKER_CACHE"/.claude-docker-state:/home/devuser/.claude \
+        -v "$BUNKER_CACHE"/.npm-docker-cache:/home/devuser/.npm \
+        -v "$BUNKER_CACHE"/.gopath-docker-cache:/home/devuser/go \
+        -v "$BUNKER_CACHE"/.composer-docker-cache:/home/devuser/.cache/composer \
+        -v "$BUNKER_CACHE"/.playwright-docker-cache:/home/devuser/.cache/ms-playwright \
+        "$image_name" tail -f /dev/null
 }
 
-# Stop workspace container
-stop-claude-env() {
-    echo "Stopping claude-workspace container..."
-    docker stop claude-workspace 2>/dev/null || true
+# Stop bunker workspace container
+stop-bunker() {
+    echo "Stopping agent-bunker container..."
+    docker stop agent-bunker 2>/dev/null || docker stop claude-workspace 2>/dev/null || true
 }
 
 # Open bash shell inside container in target project directory
-cclaude-shell() {
+bunker-shell() {
     local target_dir
     target_dir="$(resolve_target_dir "$1")"
-    start-claude-env
-    echo "Opening bash shell in: $target_dir"
-    docker exec -it -w "$target_dir" claude-workspace /bin/bash
+    start-bunker
+    echo "Opening bash shell inside AgentBunker in: $target_dir"
+    docker exec -it -w "$target_dir" agent-bunker /bin/bash
 }
 
-# Launch Claude Code inside container with full autonomy in target directory
-cclaude() {
+# Launch autonomous agent inside container in target directory
+bunker() {
     local target_input=""
-    local claude_args=()
+    local agent_args=()
 
     # If first argument is not a flag, treat it as project name/subpath
     if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
@@ -180,35 +192,42 @@ cclaude() {
         shift
     fi
 
-    claude_args=("$@")
+    agent_args=("$@")
 
     local target_dir
     target_dir="$(resolve_target_dir "$target_input")"
 
-    start-claude-env
-    echo "Launching Claude Code in: $target_dir"
-    docker exec -it -w "$target_dir" claude-workspace claude --dangerously-skip-permissions "${claude_args[@]}"
+    start-bunker
+    echo "Launching Claude Code inside AgentBunker in: $target_dir"
+    docker exec -it -w "$target_dir" agent-bunker claude --dangerously-skip-permissions "${agent_args[@]}"
 }
 
-# If script is executed directly (not sourced), execute start-claude-env by default
+# Backward compatibility aliases
+cclaude() { bunker "$@"; }
+cclaude-shell() { bunker-shell "$@"; }
+start-claude-env() { start-bunker "$@"; }
+stop-claude-env() { stop-bunker "$@"; }
+build-claude-env() { build-bunker "$@"; }
+
+# If script is executed directly (not sourced), execute start-bunker by default
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "$1" in
         build)
-            build-claude-env
+            build-bunker
             ;;
         stop)
-            stop-claude-env
+            stop-bunker
             ;;
         shell)
             shift
-            cclaude-shell "$@"
+            bunker-shell "$@"
             ;;
-        claude)
+        bunker|claude|run)
             shift
-            cclaude "$@"
+            bunker "$@"
             ;;
         *)
-            start-claude-env
+            start-bunker
             ;;
     esac
 fi
