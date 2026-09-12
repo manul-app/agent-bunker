@@ -65,7 +65,7 @@ ENV LANG=en_US.UTF-8 \
 
 # 4. Install PHP Composer, Claude Code CLI, and Playwright package
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-RUN npm install -g @anthropic-ai/claude-code playwright
+RUN npm install -g playwright
 
 # 5. Create non-root devuser and configure sudo rights
 # Allow devuser sudo without password, but block direct iptables/nft manipulation
@@ -81,12 +81,14 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/setup-firewall.sh /usr/local/bin/entrypoint.sh
 
 USER devuser
+RUN curl -fsSL https://claude.ai/install.sh | bash
 WORKDIR /projects
 
 # 7. Set Go and Playwright browser cache paths
 ENV GOPATH=/home/devuser/go
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/devuser/.cache/ms-playwright
 ENV PATH=$PATH:$GOPATH/bin
+ENV PATH=/home/devuser/.local/bin:$PATH
 
 # 8. Git global configuration for devuser
 RUN git config --global user.name "Claude Agent" && \

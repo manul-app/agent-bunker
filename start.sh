@@ -28,7 +28,7 @@ resolve_project_dirs() {
     fi
 
     local raw_dirs="${PROJECTS_DIRS:-$HOME/projects}"
-    IFS=',' read -ra DIRS_ARRAY <<< "$raw_dirs"
+    IFS=',' DIRS_ARRAY=($raw_dirs)
 
     PROJECT_MOUNTS=()
     PROJECT_MAPPINGS=()
@@ -151,12 +151,12 @@ start-bunker() {
         -e GITLAB_TOKEN="$GITLAB_TOKEN" \
         -e GITLAB_USER="$GITLAB_USER" \
         -e ALLOW_LOCAL_DB_ACCESS="${ALLOW_LOCAL_DB_ACCESS:-true}" \
-        -p 3000:3000 \
-        -p 5173:5173 \
-        -p 8000:8000 \
-        -p 8080:8080 \
-        -p 8025:8025 \
-        -p 1025:1025 \
+        -p 13000:3000 \
+        -p 15173:5173 \
+        -p 18000:8000 \
+        -p 18080:8080 \
+        -p 18025:8025 \
+        -p 11025:1025 \
         "${PROJECT_MOUNTS[@]}" \
         -v "$BUNKER_CACHE"/.claude-docker-state:/home/devuser/.claude \
         -v "$BUNKER_CACHE"/.npm-docker-cache:/home/devuser/.npm \
