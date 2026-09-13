@@ -90,6 +90,7 @@ ENV PATH="/home/devuser/.local/bin:$GOPATH/bin:$PATH"
 # 8. Install user-level CLI tools (as devuser) & configure Git
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+RUN curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh | bash
 RUN curl -fsSL https://chatgpt.com/codex/install.sh | sh
 USER root
 RUN CODEX_BIN="$(find /home/devuser/.codex/packages/standalone/releases \

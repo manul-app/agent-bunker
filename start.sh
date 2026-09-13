@@ -10,6 +10,7 @@ fi
 mkdir -p "$BUNKER_CACHE"/.claude-docker-state
 mkdir -p "$BUNKER_CACHE"/.codex-docker-state
 mkdir -p "$BUNKER_CACHE"/.antigravity-docker-state
+mkdir -p "$BUNKER_CACHE"/.qwen-docker-state
 mkdir -p "$BUNKER_CACHE"/.npm-docker-cache
 mkdir -p "$BUNKER_CACHE"/.gopath-docker-cache
 mkdir -p "$BUNKER_CACHE"/.composer-docker-cache
@@ -166,6 +167,7 @@ start-bunker() {
         -e OPENAI_API_KEY="$OPENAI_API_KEY" \
         -e GEMINI_API_KEY="$GEMINI_API_KEY" \
         ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
+        ${BAILIAN_CODING_PLAN_API_KEY:+-e BAILIAN_CODING_PLAN_API_KEY="$BAILIAN_CODING_PLAN_API_KEY"} \
         -e GITLAB_URL="$GITLAB_URL" \
         -e GITLAB_HOST="$GITLAB_HOST" \
         -e GITLAB_TOKEN="$GITLAB_TOKEN" \
@@ -182,6 +184,7 @@ start-bunker() {
         -v "$BUNKER_CACHE"/.claude-docker-state:/home/devuser/.claude \
         -v "$BUNKER_CACHE"/.codex-docker-state:/home/devuser/.codex \
         -v "$BUNKER_CACHE"/.antigravity-docker-state:/home/devuser/.antigravity \
+        -v "$BUNKER_CACHE"/.qwen-docker-state:/home/devuser/.qwen \
         -v "$BUNKER_CACHE"/.npm-docker-cache:/home/devuser/.npm \
         -v "$BUNKER_CACHE"/.gopath-docker-cache:/home/devuser/go \
         -v "$BUNKER_CACHE"/.composer-docker-cache:/home/devuser/.cache/composer \
@@ -264,6 +267,32 @@ bunker-agy() {
     docker exec -it -w "$target_dir" agent-bunker agy "${agent_args[@]}"
 }
 
+# Launch Qwen Code inside container
+bunker-qwen() {
+
+    local target_input=""
+    local agent_args=()
+
+    if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+        target_input="$1"
+        shift
+    fi
+
+    agent_args=("$@")
+
+    local target_dir
+    target_dir="$(resolve_target_dir "$target_input")"
+
+    start-bunker
+
+    echo "Launching Qwen Code inside AgentBunker in: $target_dir"
+
+    docker exec -it \
+        -w "$target_dir" \
+        agent-bunker \
+        qwen "${agent_args[@]}"
+}
+
 # Backward compatibility aliases
 start-claude-env() { start-bunker "$@"; }
 stop-claude-env() { stop-bunker "$@"; }
@@ -289,6 +318,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         agy|antigravity|gemini)
             shift
             bunker-agy "$@"
+            ;;
+        qwen)
+            shift
+            bunker-qwen "$@"
             ;;
         bunker|claude|run)
             shift
