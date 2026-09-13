@@ -117,6 +117,18 @@ resolve_target_dir() {
     echo "$default_container_mount"
 }
 
+resolve_gitlab_config() {
+    if [ -f "$SCRIPT_DIR/.env" ]; then
+        set -a
+        source "$SCRIPT_DIR/.env"
+        set +a
+    fi
+
+    GITLAB_URL="${GITLAB_URL:-https://gitlab.com}"
+    
+    GITLAB_HOST=$(echo "$GITLAB_URL" | sed -e 's|^[^:]*://||' -e 's|/.*$||' -e 's|:.*$||')
+}
+
 # Build docker image
 build-bunker() {
     docker build --no-cache -t agent-bunker -t claude-env "$SCRIPT_DIR"
@@ -125,6 +137,7 @@ build-bunker() {
 # Start bunker workspace container
 start-bunker() {
     resolve_project_dirs
+    resolve_gitlab_config
 
     # Check if container is already running
     if docker ps --format '{{.Names}}' | grep -q "^agent-bunker$"; then
@@ -153,6 +166,8 @@ start-bunker() {
         -e OPENAI_API_KEY="$OPENAI_API_KEY" \
         -e GEMINI_API_KEY="$GEMINI_API_KEY" \
         ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
+        -e GITLAB_URL="$GITLAB_URL" \
+        -e GITLAB_HOST="$GITLAB_HOST" \
         -e GITLAB_TOKEN="$GITLAB_TOKEN" \
         -e GITLAB_USER="$GITLAB_USER" \
         -e ALLOW_LOCAL_DB_ACCESS="${ALLOW_LOCAL_DB_ACCESS:-true}" \

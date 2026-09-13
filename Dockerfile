@@ -105,5 +105,8 @@ RUN git config --global user.name "Agent Bunker" && \
     git config --global core.excludesfile ~/.gitignore_global && \
     echo ".claude/settings.local.json" > /home/devuser/.gitignore_global
 
+ENV GITLAB_URL="https://gitlab.com" \
+    GITLAB_HOST="gitlab.com"
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["tail", "-f", "/dev/null"]

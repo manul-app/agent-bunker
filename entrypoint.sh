@@ -8,9 +8,9 @@ if [ -x /usr/local/bin/setup-firewall.sh ]; then
 fi
 
 # Dynamically configure GitLab token rewrite if provided via environment variable
-if [ -n "$GITLAB_TOKEN" ]; then
-    GITLAB_USER="${GITLAB_USER:-oauth2}"
-    git config --global url."https://${GITLAB_USER}:${GITLAB_TOKEN}@gitlab.com/".insteadOf "git@gitlab.com:"
+if [ -n "$GITLAB_TOKEN" ] && [ -n "$GITLAB_URL" ]; then
+    git config --global url."https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/".insteadOf "https://${GITLAB_HOST}/"
+    git config --global url."https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/".insteadOf "git@${GITLAB_HOST}:"
 fi
 
 # Execute CMD passed to container
