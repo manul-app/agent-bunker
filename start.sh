@@ -203,8 +203,6 @@ bunker() {
 }
 
 # Backward compatibility aliases
-cclaude() { bunker "$@"; }
-cclaude-shell() { bunker-shell "$@"; }
 start-claude-env() { start-bunker "$@"; }
 stop-claude-env() { stop-bunker "$@"; }
 build-claude-env() { build-bunker "$@"; }

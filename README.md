@@ -91,9 +91,9 @@ Each folder is mounted under its basename (e.g. `~/projects` -> `/projects`, `~/
 ./start.sh build
 ```
 
-### 3. Add Shell Helpers to `~/.zshrc` (macOS)
+### 3. Add Shell Helpers
 
-Add this line to your `~/.zshrc`:
+Add this line to your `~/.zshrc` if you use macOS (or `~/.bashrc` for Linux):
 ```bash
 source <path-to-agent-bunker>/start.sh
 ```
@@ -115,7 +115,6 @@ Navigate to any project directory inside your configured `PROJECTS_DIRS` and run
 cd ~/projects/my-cool-app
 bunker
 ```
-*(Note: `cclaude` alias is also supported for backward compatibility).*
 
 - Automatically starts the `agent-bunker` container in the background if not already running.
 - Automatically maps your current host directory to the container path (`/projects/my-cool-app`).
@@ -187,15 +186,15 @@ If your database runs in a separate Docker container:
 ## Pre-installed Tooling & Ports
 
 - **Mailpit:** Pre-installed binary at `/usr/local/bin/mailpit`.
-  - Web UI: [http://localhost:8025](http://localhost:8025)
-  - SMTP: `localhost:1025`
+  - Web UI: [http://localhost:18025](http://localhost:18025)
+  - SMTP: `localhost:11025`
 - **Playwright:** System dependencies installed; browser binaries are stored persistently in `~/.claude-cache/.playwright-docker-cache`.
 - **Forwarded Dev Ports:**
-  - `3000`: React / Next.js
-  - `5173`: Vite
-  - `8000`: Laravel / PHP / Python
-  - `8080`: Go / APIs
-  - `8025` / `1025`: Mailpit Web & SMTP
+  - `13000`: React / Next.js
+  - `15173`: Vite
+  - `18000`: Laravel / PHP / Python
+  - `18080`: Go / APIs
+  - `18025` / `11025`: Mailpit Web & SMTP
 - **Runtimes & CLI Tools:** Node 20, Python 3 + venv, Go, PHP + Composer, PostgreSQL client (`psql`), `ripgrep`, `fd`.
 
 ---
