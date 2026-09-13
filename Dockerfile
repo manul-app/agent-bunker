@@ -63,12 +63,11 @@ ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# 4. Install PHP Composer, Claude Code CLI, and Playwright package
+# 4. Install PHP Composer, Playwright
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 RUN npm install -g playwright
 
 # 5. Create non-root devuser and configure sudo rights
-# Allow devuser sudo without password, but block direct iptables/nft manipulation
 RUN useradd -m -s /bin/bash devuser && \
     echo "devuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/devuser && \
     echo "devuser ALL=(ALL) !/sbin/iptables, !/sbin/iptables-*, !/usr/sbin/iptables, !/usr/sbin/iptables-*, !/sbin/nft, !/usr/sbin/nft" >> /etc/sudoers.d/devuser && \
@@ -81,18 +80,27 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/setup-firewall.sh /usr/local/bin/entrypoint.sh
 
 USER devuser
-RUN curl -fsSL https://claude.ai/install.sh | bash
 WORKDIR /projects
 
-# 7. Set Go and Playwright browser cache paths
+# 7. Set Go, Playwright, and local bin PATHs
 ENV GOPATH=/home/devuser/go
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/devuser/.cache/ms-playwright
-ENV PATH=$PATH:$GOPATH/bin
-ENV PATH=/home/devuser/.local/bin:$PATH
+ENV PATH="/home/devuser/.local/bin:$GOPATH/bin:$PATH"
 
-# 8. Git global configuration for devuser
-RUN git config --global user.name "Claude Agent" && \
-    git config --global user.email "claude-agent@local.sandbox" && \
+# 8. Install user-level CLI tools (as devuser) & configure Git
+RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+RUN curl -fsSL https://chatgpt.com/codex/install.sh | sh
+USER root
+RUN if [ -f /home/devuser/.codex/bin/codex ]; then \
+        cp /home/devuser/.codex/bin/codex /usr/local/bin/codex; \
+    elif [ -f /home/devuser/.local/bin/codex ]; then \
+        cp /home/devuser/.local/bin/codex /usr/local/bin/codex; \
+    fi && chmod +x /usr/local/bin/codex || true
+USER devuser
+
+RUN git config --global user.name "Agent Bunker" && \
+    git config --global user.email "agent-bunker@local.sandbox" && \
     git config --global safe.directory '*' && \
     git config --global core.excludesfile ~/.gitignore_global && \
     echo ".claude/settings.local.json" > /home/devuser/.gitignore_global

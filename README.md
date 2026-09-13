@@ -126,6 +126,26 @@ bunker my-cool-app
 bunker my-cool-app/backend
 ```
 
+How to run Antigraviry:
+
+```bash
+bunker-agy
+```
+
+How to run Codex:
+
+Login as device first time
+
+```bash
+bunker-codex . login --device-auth
+```
+
+After that you can run codex in usual way
+
+```bash
+bunker-codex
+```
+
 ### Interactive Shell (`bunker-shell`)
 
 To jump into a bash terminal inside the container:

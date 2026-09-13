@@ -8,6 +8,8 @@ if [ ! -e "$BUNKER_CACHE" ] && [ -d "$HOME/.claude-cache" ]; then
 fi
 
 mkdir -p "$BUNKER_CACHE"/.claude-docker-state
+mkdir -p "$BUNKER_CACHE"/.codex-docker-state
+mkdir -p "$BUNKER_CACHE"/.antigravity-docker-state
 mkdir -p "$BUNKER_CACHE"/.npm-docker-cache
 mkdir -p "$BUNKER_CACHE"/.gopath-docker-cache
 mkdir -p "$BUNKER_CACHE"/.composer-docker-cache
@@ -117,7 +119,7 @@ resolve_target_dir() {
 
 # Build docker image
 build-bunker() {
-    docker build -t agent-bunker -t claude-env "$SCRIPT_DIR"
+    docker build --no-cache -t agent-bunker -t claude-env "$SCRIPT_DIR"
 }
 
 # Start bunker workspace container
@@ -148,6 +150,9 @@ start-bunker() {
         --add-host=host.docker.internal:host-gateway \
         -e DB_HOST=host.docker.internal \
         -e DB_PORT=5432 \
+        -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+        -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+        ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
         -e GITLAB_TOKEN="$GITLAB_TOKEN" \
         -e GITLAB_USER="$GITLAB_USER" \
         -e ALLOW_LOCAL_DB_ACCESS="${ALLOW_LOCAL_DB_ACCESS:-true}" \
@@ -157,8 +162,11 @@ start-bunker() {
         -p 18080:8080 \
         -p 18025:8025 \
         -p 11025:1025 \
+        -p 1455:1455 \
         "${PROJECT_MOUNTS[@]}" \
         -v "$BUNKER_CACHE"/.claude-docker-state:/home/devuser/.claude \
+        -v "$BUNKER_CACHE"/.codex-docker-state:/home/devuser/.codex \
+        -v "$BUNKER_CACHE"/.antigravity-docker-state:/home/devuser/.antigravity \
         -v "$BUNKER_CACHE"/.npm-docker-cache:/home/devuser/.npm \
         -v "$BUNKER_CACHE"/.gopath-docker-cache:/home/devuser/go \
         -v "$BUNKER_CACHE"/.composer-docker-cache:/home/devuser/.cache/composer \
@@ -181,12 +189,11 @@ bunker-shell() {
     docker exec -it -w "$target_dir" agent-bunker /bin/bash
 }
 
-# Launch autonomous agent inside container in target directory
+# Launch Claude autonomous agent inside container in target directory
 bunker() {
     local target_input=""
     local agent_args=()
 
-    # If first argument is not a flag, treat it as project name/subpath
     if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
         target_input="$1"
         shift
@@ -200,6 +207,46 @@ bunker() {
     start-bunker
     echo "Launching Claude Code inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker claude --dangerously-skip-permissions "${agent_args[@]}"
+}
+
+# Launch OpenAI Codex CLI inside container
+bunker-codex() {
+    local target_input=""
+    local agent_args=()
+
+    if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+        target_input="$1"
+        shift
+    fi
+
+    agent_args=("$@")
+
+    local target_dir
+    target_dir="$(resolve_target_dir "$target_input")"
+
+    start-bunker
+    echo "Launching Codex CLI inside AgentBunker in: $target_dir"
+    docker exec -it -w "$target_dir" agent-bunker codex "${agent_args[@]}"
+}
+
+# Launch Antigravity CLI (Gemini) inside container
+bunker-agy() {
+    local target_input=""
+    local agent_args=()
+
+    if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+        target_input="$1"
+        shift
+    fi
+
+    agent_args=("$@")
+
+    local target_dir
+    target_dir="$(resolve_target_dir "$target_input")"
+
+    start-bunker
+    echo "Launching Antigravity CLI inside AgentBunker in: $target_dir"
+    docker exec -it -w "$target_dir" agent-bunker agy "${agent_args[@]}"
 }
 
 # Backward compatibility aliases
@@ -219,6 +266,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         shell)
             shift
             bunker-shell "$@"
+            ;;
+        codex)
+            shift
+            bunker-codex "$@"
+            ;;
+        agy|antigravity|gemini)
+            shift
+            bunker-agy "$@"
             ;;
         bunker|claude|run)
             shift
