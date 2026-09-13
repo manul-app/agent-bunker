@@ -1,7 +1,7 @@
 # 🛡️ AgentBunker
 
 > **The heavy-duty, batteries-included sandbox for autonomous AI coding agents.**  
-> Run Claude Code, Antigravity (`agy`), and OpenAI Codex in full autonomous mode (`--dangerously-skip-permissions`) without risking your host machine, SSH keys, or private networks.
+> Run Claude Code, OpenAI Codex, Qwen and Antigravity in full autonomous mode (`--dangerously-skip-permissions`) without risking your host machine, SSH keys, or private networks.
 
 ---
 
@@ -39,9 +39,10 @@ Running AI coding agents on full auto-pilot is a massive productivity boost — 
 
 ## Supported Agents & Roadmap
 
-- [x] **Claude Code CLI** (`@anthropic-ai/claude-code`) — fully supported out of the box.
-- [ ] **Google Antigravity** (`agy`) — upcoming.
-- [ ] **OpenAI Codex CLI** — upcoming.
+- [x] **Claude Code CLI** — fully supported out of the box.
+- [x] **Google Antigravity** (`agy`) — — fully supported out of the box.
+- [x] **OpenAI Codex CLI** — — fully supported out of the box.
+- [x] **Qwen CLI** — fully supported out of the box.
 - [ ] Multi-flavor minimal image builds.
 
 ---
@@ -144,6 +145,12 @@ After that you can run codex in usual way
 
 ```bash
 bunker-codex
+```
+
+How to run Qwen:
+
+```bash
+bunker-qwen
 ```
 
 ### Interactive Shell (`bunker-shell`)
