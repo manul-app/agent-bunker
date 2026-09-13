@@ -92,12 +92,16 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
 RUN curl -fsSL https://chatgpt.com/codex/install.sh | sh
 USER root
-RUN if [ -f /home/devuser/.codex/bin/codex ]; then \
-        cp /home/devuser/.codex/bin/codex /usr/local/bin/codex; \
-    elif [ -f /home/devuser/.local/bin/codex ]; then \
-        cp /home/devuser/.local/bin/codex /usr/local/bin/codex; \
-    fi && chmod +x /usr/local/bin/codex || true
+RUN CODEX_BIN="$(find /home/devuser/.codex/packages/standalone/releases \
+      -type f -name codex -perm -111 2>/dev/null | sort -V | tail -1)" && \
+    CODEX_DIR="$(dirname "$CODEX_BIN")" && \
+    test -x "$CODEX_DIR/codex" && \
+    test -x "$CODEX_DIR/codex-code-mode-host" && \
+    cp "$CODEX_DIR/codex" /usr/local/bin/codex && \
+    cp "$CODEX_DIR/codex-code-mode-host" /usr/local/bin/codex-code-mode-host && \
+    chmod 755 /usr/local/bin/codex /usr/local/bin/codex-code-mode-host
 USER devuser
+ENV PATH="/home/devuser/.local/bin:$GOPATH/bin:$PATH"
 
 RUN git config --global user.name "Agent Bunker" && \
     git config --global user.email "agent-bunker@local.sandbox" && \
