@@ -85,7 +85,7 @@ WORKDIR /projects
 # 7. Set Go, Playwright, and local bin PATHs
 ENV GOPATH=/home/devuser/go
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/devuser/.cache/ms-playwright
-ENV PATH="/home/devuser/.local/bin:$GOPATH/bin:$PATH"
+ENV PATH="/home/devuser/.local/bin:/home/devuser/.grok/bin:$GOPATH/bin:$PATH"
 
 # 8. Install user-level CLI tools (as devuser) & configure Git
 RUN curl -fsSL https://claude.ai/install.sh | bash
@@ -101,9 +101,23 @@ RUN CODEX_BIN="$(find /home/devuser/.codex/packages/standalone/releases \
     cp "$CODEX_DIR/codex" /usr/local/bin/codex && \
     cp "$CODEX_DIR/codex-code-mode-host" /usr/local/bin/codex-code-mode-host && \
     chmod 755 /usr/local/bin/codex /usr/local/bin/codex-code-mode-host
+# Grok installs everything under ~/.grok (bin/grok is a symlink into ~/.grok/downloads),
+# and that whole tree is hidden by the persistent ~/.grok state mount at runtime, so
+# install it under /opt instead. Run as root so the installer also links it into
+# /usr/local/bin; the explicit ln keeps that guaranteed if the installer changes.
+RUN HOME=/opt/grok bash -c 'curl -fsSL https://x.ai/cli/install.sh | bash' && \
+    ln -sf /opt/grok/.grok/bin/grok /usr/local/bin/grok && \
+    chown -R devuser:devuser /opt/grok && \
+    chmod -R a+rX /opt/grok
 USER devuser
-ENV PATH="/home/devuser/.local/bin:$GOPATH/bin:$PATH"
 
+# 9. Fail the build early if any agent CLI is missing from PATH
+RUN for cli in claude agy qwen codex grok; do \
+        command -v "$cli" >/dev/null || { echo "ERROR: $cli not found in PATH"; exit 1; }; \
+    done && \
+    grok --version
+
+# 10. Configure Git
 RUN git config --global user.name "Agent Bunker" && \
     git config --global user.email "agent-bunker@local.sandbox" && \
     git config --global safe.directory '*' && \
