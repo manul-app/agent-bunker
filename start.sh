@@ -169,6 +169,7 @@ start-bunker() {
         -e GEMINI_API_KEY="$GEMINI_API_KEY" \
         ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
         ${BAILIAN_CODING_PLAN_API_KEY:+-e BAILIAN_CODING_PLAN_API_KEY="$BAILIAN_CODING_PLAN_API_KEY"} \
+        ${XAI_API_KEY:+-e XAI_API_KEY="$XAI_API_KEY"} \
         ${GROK_DEPLOYMENT_KEY:+-e GROK_DEPLOYMENT_KEY="$GROK_DEPLOYMENT_KEY"} \
         -e GITLAB_URL="$GITLAB_URL" \
         -e GITLAB_HOST="$GITLAB_HOST" \
@@ -318,7 +319,7 @@ bunker-x() {
     docker exec -it \
         -w "$target_dir" \
         agent-bunker \
-        grok "${agent_args[@]}"
+        grok --always-approve "${agent_args[@]}"
 }
 
 # Backward compatibility aliases

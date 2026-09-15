@@ -83,6 +83,9 @@ ALLOW_LOCAL_DB_ACCESS=true
 # GitLab credentials (optional)
 GITLAB_USER=oauth2
 GITLAB_TOKEN=your_token_here
+
+# xAI API key for Grok (optional; otherwise sign in on first `bunker-x`)
+XAI_API_KEY=
 ```
 
 Each folder is mounted under its basename (e.g. `~/projects` -> `/projects`, `~/work` -> `/work`).
@@ -159,6 +162,8 @@ How to run Grok:
 ```bash
 bunker-x
 ```
+
+Grok runs with `--always-approve` (same idea as Claude's `--dangerously-skip-permissions`). On first launch it will prompt to sign in unless `XAI_API_KEY` is set in `.env`.
 
 ### Interactive Shell (`bunker-shell`)
 
