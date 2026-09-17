@@ -146,5 +146,13 @@ RUN git config --global user.name "Agent Bunker" && \
 ENV GITLAB_URL="https://gitlab.com" \
     GITLAB_HOST="gitlab.com"
 
+# 12. Keep Claude Code's config file inside the persisted state directory.
+# By default it lives at ~/.claude.json, a sibling of ~/.claude, so it is NOT
+# covered by the ~/.claude volume and is lost whenever the container is
+# recreated - taking the onboarding flags, the OAuth account record and the
+# per-project trust decisions with it. CLAUDE_CONFIG_DIR moves the file to
+# $CLAUDE_CONFIG_DIR/.claude.json, i.e. into the mounted directory.
+ENV CLAUDE_CONFIG_DIR=/home/devuser/.claude
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["tail", "-f", "/dev/null"]

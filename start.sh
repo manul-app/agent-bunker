@@ -10,6 +10,8 @@ fi
 mkdir -p "$BUNKER_CACHE"/.claude-docker-state
 mkdir -p "$BUNKER_CACHE"/.codex-docker-state
 mkdir -p "$BUNKER_CACHE"/.antigravity-docker-state
+# Antigravity CLI keeps its auth and config under ~/.gemini, not ~/.antigravity
+mkdir -p "$BUNKER_CACHE"/.gemini-docker-state
 mkdir -p "$BUNKER_CACHE"/.qwen-docker-state
 mkdir -p "$BUNKER_CACHE"/.grok-docker-state
 mkdir -p "$BUNKER_CACHE"/.npm-docker-cache
@@ -187,7 +189,45 @@ ensure-docker() {
 # Build docker image
 build-bunker() {
     ensure-docker || return 1
-    docker build --no-cache -t agent-bunker -t claude-env "$SCRIPT_DIR"
+    docker build --no-cache -t agent-bunker -t claude-env "$SCRIPT_DIR" || return 1
+
+    # The container is no longer --rm, so a stale one would keep running the old
+    # image forever. Drop it here; start-bunker recreates it from the new image.
+    if docker ps -a --format '{{.Names}}' | grep -q "^agent-bunker$"; then
+        echo "Removing the container built from the previous image..."
+        docker rm -f agent-bunker >/dev/null 2>&1 || true
+    fi
+}
+
+# Remove the container so the next start recreates it from scratch.
+# Needed after changing .env, PROJECTS_DIRS or resource limits: a reused
+# container keeps the environment and mounts it was created with.
+recreate-bunker() {
+    ensure-docker || return 1
+    docker rm -f agent-bunker >/dev/null 2>&1 || true
+    start-bunker
+}
+
+# Desired host:container bind mounts, sorted, one per line. Used to detect that
+# an existing container was created with a different set of project mounts.
+desired_mount_signature() {
+    {
+        local i=0
+        while [ $i -lt ${#PROJECT_MOUNTS[@]} ]; do
+            [ "${PROJECT_MOUNTS[$i]}" = "-v" ] && echo "${PROJECT_MOUNTS[$((i + 1))]}"
+            i=$((i + 1))
+        done
+        echo "$BUNKER_CACHE/.claude-docker-state:/home/devuser/.claude"
+        echo "$BUNKER_CACHE/.codex-docker-state:/home/devuser/.codex"
+        echo "$BUNKER_CACHE/.antigravity-docker-state:/home/devuser/.antigravity"
+        echo "$BUNKER_CACHE/.gemini-docker-state:/home/devuser/.gemini"
+        echo "$BUNKER_CACHE/.qwen-docker-state:/home/devuser/.qwen"
+        echo "$BUNKER_CACHE/.grok-docker-state:/home/devuser/.grok"
+        echo "$BUNKER_CACHE/.npm-docker-cache:/home/devuser/.npm"
+        echo "$BUNKER_CACHE/.gopath-docker-cache:/home/devuser/go"
+        echo "$BUNKER_CACHE/.composer-docker-cache:/home/devuser/.cache/composer"
+        echo "$BUNKER_CACHE/.playwright-docker-cache:/home/devuser/.cache/ms-playwright"
+    } | sort
 }
 
 # Start bunker workspace container
@@ -209,12 +249,35 @@ start-bunker() {
         image_name="claude-env"
     fi
 
+    # Restart an existing stopped container rather than creating a new one.
+    # The container is not --rm anymore, so its writable layer survives a host
+    # reboot along with anything a CLI wrote outside the mounted state dirs.
+    # Recreate it only when the image or the project mounts changed under it.
+    if docker ps -a --format '{{.Names}}' | grep -q "^agent-bunker$"; then
+        local container_image wanted_image container_mounts wanted_mounts
+        container_image="$(docker inspect -f '{{.Image}}' agent-bunker 2>/dev/null)"
+        wanted_image="$(docker image inspect -f '{{.Id}}' "$image_name" 2>/dev/null)"
+        container_mounts="$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}}{{"\n"}}{{end}}' agent-bunker 2>/dev/null | sort)"
+        wanted_mounts="$(desired_mount_signature)"
+
+        if [ -n "$container_image" ] && [ "$container_image" = "$wanted_image" ] \
+           && [ "$container_mounts" = "$wanted_mounts" ]; then
+            echo "Restarting the existing agent-bunker container..."
+            docker start agent-bunker >/dev/null && return 0
+            echo "Existing container failed to start, recreating it..."
+        else
+            echo "Container is stale (image or mounts changed), recreating it..."
+        fi
+
+        docker rm -f agent-bunker >/dev/null 2>&1 || true
+    fi
+
     echo "Starting agent-bunker container with mapped project directories:"
     for mapping in "${PROJECT_MAPPINGS[@]}"; do
         echo "  - Host: ${mapping%%|*} -> Container: ${mapping##*|}"
     done
 
-    docker run -d --rm \
+    docker run -d \
         --name agent-bunker \
         --memory="$BUNKER_MEMORY" \
         --memory-swap="$BUNKER_MEMORY_SWAP" \
@@ -247,6 +310,7 @@ start-bunker() {
         -v "$BUNKER_CACHE"/.claude-docker-state:/home/devuser/.claude \
         -v "$BUNKER_CACHE"/.codex-docker-state:/home/devuser/.codex \
         -v "$BUNKER_CACHE"/.antigravity-docker-state:/home/devuser/.antigravity \
+        -v "$BUNKER_CACHE"/.gemini-docker-state:/home/devuser/.gemini \
         -v "$BUNKER_CACHE"/.qwen-docker-state:/home/devuser/.qwen \
         -v "$BUNKER_CACHE"/.grok-docker-state:/home/devuser/.grok \
         -v "$BUNKER_CACHE"/.npm-docker-cache:/home/devuser/.npm \
@@ -256,7 +320,8 @@ start-bunker() {
         "$image_name" tail -f /dev/null
 }
 
-# Stop bunker workspace container
+# Stop bunker workspace container. The container itself is kept so the next
+# start reuses it; use recreate-bunker to throw it away.
 stop-bunker() {
     echo "Stopping agent-bunker container..."
     docker stop agent-bunker 2>/dev/null || docker stop claude-workspace 2>/dev/null || true
@@ -395,6 +460,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             ;;
         stop)
             stop-bunker
+            ;;
+        recreate)
+            recreate-bunker
             ;;
         shell)
             shift

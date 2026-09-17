@@ -32,7 +32,7 @@ Running AI coding agents on full auto-pilot is a massive productivity boost — 
 - **Native CLI Developer Experience:**
   - Auto-detects your current directory: run `bunker` from `~/projects/my-app` on macOS, and the container automatically starts and mounts you inside `/projects/my-app`.
   - Multiple root project folders supported (e.g., `~/projects`, `~/work`).
-- **Persistent State & Caches:** Claude login tokens, npm cache, Go modules, Composer cache, and Playwright browser binaries persist across restarts in `~/.claude-cache/`.
+- **Persistent State & Caches:** Agent logins (Claude, Codex, Antigravity, Qwen, Grok), npm cache, Go modules, Composer cache, and Playwright browser binaries persist across restarts — including host reboots — in `~/.bunker-cache/`.
 - 🔌 **Host & Container Database Bridging:** Pre-configured to reach databases on macOS host (`host.docker.internal`) or across Docker networks.
 
 ---
@@ -175,12 +175,39 @@ bunker-shell [project_subpath]
 ### Container Lifecycle
 
 ```bash
-# Start container in background
+# Start container in background (reuses the existing one if it is just stopped)
 ./start.sh
 
-# Stop container
+# Stop container, keeping it for the next start
 ./start.sh stop
+
+# Throw the container away and create it from scratch
+./start.sh recreate
 ```
+
+The container is kept between runs instead of being discarded on stop, so a
+macOS reboot no longer wipes anything an agent CLI wrote outside the mounted
+state directories. `./start.sh` recreates it automatically when the image or
+the project mounts change; run `./start.sh recreate` after editing `.env`, as a
+reused container keeps the environment it was created with.
+
+### Where agent state lives
+
+Everything under `~/.bunker-cache/` is mounted into the container and survives
+reboots:
+
+| Host directory | In container | Holds |
+| --- | --- | --- |
+| `.claude-docker-state` | `~/.claude` | Claude Code OAuth tokens (`.credentials.json`), config (`.claude.json`, relocated there via `CLAUDE_CONFIG_DIR`), sessions |
+| `.codex-docker-state` | `~/.codex` | Codex `auth.json`, history |
+| `.gemini-docker-state` | `~/.gemini` | Antigravity (`agy`) auth and config — the CLI stores them here, not in `~/.antigravity` |
+| `.antigravity-docker-state` | `~/.antigravity` | Antigravity workspace state |
+| `.qwen-docker-state` | `~/.qwen` | Qwen credentials and settings |
+| `.grok-docker-state` | `~/.grok` | Grok `auth.json`, sessions |
+| `.npm-docker-cache`, `.gopath-docker-cache`, `.composer-docker-cache`, `.playwright-docker-cache` | `~/.npm`, `~/go`, `~/.cache/composer`, `~/.cache/ms-playwright` | Package and browser caches |
+
+Anything written outside these paths lives only in the container's writable
+layer; add a mount here when a new CLI keeps its login somewhere else.
 
 ---
 
@@ -227,7 +254,7 @@ If your database runs in a separate Docker container:
 - **Mailpit:** Pre-installed binary at `/usr/local/bin/mailpit`.
   - Web UI: [http://localhost:18025](http://localhost:18025)
   - SMTP: `localhost:11025`
-- **Playwright:** System dependencies installed; browser binaries are stored persistently in `~/.claude-cache/.playwright-docker-cache`.
+- **Playwright:** System dependencies installed; browser binaries are stored persistently in `~/.bunker-cache/.playwright-docker-cache`.
 - **Forwarded Dev Ports:**
   - `13000`: React / Next.js
   - `15173`: Vite
