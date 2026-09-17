@@ -25,7 +25,7 @@ Running AI coding agents on full auto-pilot is a massive productivity boost — 
   - **External Cloud Databases:** Blocks outgoing public connections on ports `5432`, `3306`, `27017`, `6379`.
   - **Self-Defense:** The agent user (`devuser`) has sudo rights for dev packages, but is explicitly restricted from modifying `iptables` or firewall rules.
 - **Monstrous Tooling Stack (Pre-installed):**
-  - **Runtimes:** Node.js 20, Python 3 + `venv` & `pip`, Go, PHP-CLI (with pgsql, sqlite3, curl, mbstring extensions).
+  - **Runtimes:** Node.js 20, Python 3 + `venv` & `pip`, Go 1.27, PHP-CLI (with pgsql, sqlite3, curl, mbstring extensions).
   - **Package Managers:** `npm`, `composer`, `pip`, Go modules.
   - **Testing & Quality:** Headless Playwright (with all Chromium OS libraries), Mailpit (local SMTP & Web UI).
   - **Search & DB:** `ripgrep`, `fd`, PostgreSQL client (`psql`).
@@ -234,7 +234,7 @@ If your database runs in a separate Docker container:
   - `18000`: Laravel / PHP / Python
   - `18080`: Go / APIs
   - `18025` / `11025`: Mailpit Web & SMTP
-- **Runtimes & CLI Tools:** Node 20, Python 3 + venv, Go, PHP + Composer, PostgreSQL client (`psql`), `ripgrep`, `fd`.
+- **Runtimes & CLI Tools:** Node 20, Python 3 + venv, Go 1.27, PHP + Composer, PostgreSQL client (`psql`), `ripgrep`, `fd`.
 
 ---
 

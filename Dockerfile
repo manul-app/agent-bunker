@@ -16,8 +16,7 @@ RUN apt-get update && apt-get install -y \
     # High-performance search tools
     ripgrep \
     fd-find \
-    # Language runtimes and tools (Go, Python, PHP, PostgreSQL client)
-    golang-go \
+    # Language runtimes and tools (Python, PHP, PostgreSQL client; Go is installed in step 2)
     python3 \
     python3-pip \
     python3-venv \
@@ -54,27 +53,47 @@ RUN apt-get update && apt-get install -y \
     && ln -s $(which fdfind) /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Install Mailpit binary
+# 2. Install the official Go toolchain (Debian bookworm's golang-go is stuck on 1.19)
+ARG GO_VERSION=1.27.1
+ARG GO_SHA256_AMD64=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
+ARG GO_SHA256_ARM64=3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) sha="$GO_SHA256_AMD64" ;; \
+        arm64) sha="$GO_SHA256_ARM64" ;; \
+        *) echo "ERROR: unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    tarball="go${GO_VERSION}.linux-${arch}.tar.gz"; \
+    curl -fsSL -o "/tmp/$tarball" "https://go.dev/dl/$tarball"; \
+    echo "$sha  /tmp/$tarball" | sha256sum -c -; \
+    rm -rf /usr/local/go; \
+    tar -C /usr/local -xzf "/tmp/$tarball"; \
+    rm "/tmp/$tarball"; \
+    /usr/local/go/bin/go version
+ENV PATH="/usr/local/go/bin:$PATH"
+
+# 3. Install Mailpit binary
 RUN curl -sL https://raw.githubusercontent.com/axllent/mailpit/develop/install.sh | bash
 
-# 3. Configure UTF-8 locale to prevent encoding issues
+# 4. Configure UTF-8 locale to prevent encoding issues
 RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# 4. Install PHP Composer, Playwright
+# 5. Install PHP Composer, Playwright
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 RUN npm install -g playwright
 
-# 5. Create non-root devuser and configure sudo rights
+# 6. Create non-root devuser and configure sudo rights
 RUN useradd -m -s /bin/bash devuser && \
     echo "devuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/devuser && \
     echo "devuser ALL=(ALL) !/sbin/iptables, !/sbin/iptables-*, !/usr/sbin/iptables, !/usr/sbin/iptables-*, !/sbin/nft, !/usr/sbin/nft" >> /etc/sudoers.d/devuser && \
     echo "devuser ALL=(ALL) NOPASSWD: /usr/local/bin/setup-firewall.sh" >> /etc/sudoers.d/devuser && \
     chmod 0440 /etc/sudoers.d/devuser
 
-# 6. Copy firewall setup and entrypoint scripts
+# 7. Copy firewall setup and entrypoint scripts
 COPY setup-firewall.sh /usr/local/bin/setup-firewall.sh
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/setup-firewall.sh /usr/local/bin/entrypoint.sh
@@ -82,12 +101,12 @@ RUN chmod 755 /usr/local/bin/setup-firewall.sh /usr/local/bin/entrypoint.sh
 USER devuser
 WORKDIR /projects
 
-# 7. Set Go, Playwright, and local bin PATHs
+# 8. Set Go, Playwright, and local bin PATHs
 ENV GOPATH=/home/devuser/go
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/devuser/.cache/ms-playwright
 ENV PATH="/home/devuser/.local/bin:/home/devuser/.grok/bin:$GOPATH/bin:$PATH"
 
-# 8. Install user-level CLI tools (as devuser) & configure Git
+# 9. Install user-level CLI tools (as devuser) & configure Git
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
 RUN curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh | bash
@@ -111,13 +130,13 @@ RUN HOME=/opt/grok bash -c 'curl -fsSL https://x.ai/cli/install.sh | bash' && \
     chmod -R a+rX /opt/grok
 USER devuser
 
-# 9. Fail the build early if any agent CLI is missing from PATH
+# 10. Fail the build early if any agent CLI is missing from PATH
 RUN for cli in claude agy qwen codex grok; do \
         command -v "$cli" >/dev/null || { echo "ERROR: $cli not found in PATH"; exit 1; }; \
     done && \
     grok --version
 
-# 10. Configure Git
+# 11. Configure Git
 RUN git config --global user.name "Agent Bunker" && \
     git config --global user.email "agent-bunker@local.sandbox" && \
     git config --global safe.directory '*' && \

@@ -131,15 +131,72 @@ resolve_gitlab_config() {
     GITLAB_HOST=$(echo "$GITLAB_URL" | sed -e 's|^[^:]*://||' -e 's|/.*$||' -e 's|:.*$||')
 }
 
+# Resolve container resource limits (overridable via .env or environment)
+resolve_resource_limits() {
+    # Hard ceiling on RAM. The container is OOM-killed past this.
+    BUNKER_MEMORY="${BUNKER_MEMORY:-8g}"
+
+    # RAM + swap combined. Keeps a small swap cushion so a transient spike
+    # degrades instead of killing a running agent mid-session.
+    BUNKER_MEMORY_SWAP="${BUNKER_MEMORY_SWAP:-10g}"
+
+    # CPU quota. This throttles, it does not kill: a runaway build loop keeps
+    # running, just never past this many cores.
+    BUNKER_CPUS="${BUNKER_CPUS:-4}"
+
+    # Process ceiling. Far above anything a real toolchain needs (node, npm,
+    # playwright, parallel agent sessions), low enough that a fork bomb dies
+    # before it eats the host PID space.
+    BUNKER_PIDS="${BUNKER_PIDS:-4096}"
+
+    # /dev/shm. Docker defaults to 64m, which is not enough for Chromium.
+    BUNKER_SHM="${BUNKER_SHM:-1g}"
+}
+
+# Make sure the Docker daemon is actually up.
+# After a macOS restart Docker Desktop does not come back on its own unless
+# "Start Docker Desktop when you sign in" is enabled, and the stale
+# ~/.docker/run/docker.sock left behind makes every docker call fail with
+# "Cannot connect to the Docker daemon" instead of something readable.
+ensure-docker() {
+    docker info >/dev/null 2>&1 && return 0
+
+    if [ "$(uname -s)" != "Darwin" ] || [ ! -d /Applications/Docker.app ]; then
+        echo "Docker daemon is not running. Start it and retry." >&2
+        return 1
+    fi
+
+    echo "Docker daemon is down, starting Docker Desktop..."
+    open -a Docker || { echo "Failed to launch Docker Desktop." >&2; return 1; }
+
+    local waited=0
+    local timeout="${BUNKER_DOCKER_TIMEOUT:-120}"
+    while [ "$waited" -lt "$timeout" ]; do
+        if docker info >/dev/null 2>&1; then
+            echo "Docker daemon is up (${waited}s)."
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    echo "Docker daemon did not come up within ${timeout}s." >&2
+    return 1
+}
+
 # Build docker image
 build-bunker() {
+    ensure-docker || return 1
     docker build --no-cache -t agent-bunker -t claude-env "$SCRIPT_DIR"
 }
 
 # Start bunker workspace container
 start-bunker() {
+    ensure-docker || return 1
+
     resolve_project_dirs
     resolve_gitlab_config
+    resolve_resource_limits
 
     # Check if container is already running
     if docker ps --format '{{.Names}}' | grep -q "^agent-bunker$"; then
@@ -159,8 +216,11 @@ start-bunker() {
 
     docker run -d --rm \
         --name agent-bunker \
-        --memory="8g" \
-        --cpus="4" \
+        --memory="$BUNKER_MEMORY" \
+        --memory-swap="$BUNKER_MEMORY_SWAP" \
+        --cpus="$BUNKER_CPUS" \
+        --pids-limit="$BUNKER_PIDS" \
+        --shm-size="$BUNKER_SHM" \
         --cap-add=NET_ADMIN \
         --add-host=host.docker.internal:host-gateway \
         -e DB_HOST=host.docker.internal \
@@ -206,7 +266,7 @@ stop-bunker() {
 bunker-shell() {
     local target_dir
     target_dir="$(resolve_target_dir "$1")"
-    start-bunker
+    start-bunker || return 1
     echo "Opening bash shell inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker /bin/bash
 }
@@ -226,7 +286,7 @@ bunker() {
     local target_dir
     target_dir="$(resolve_target_dir "$target_input")"
 
-    start-bunker
+    start-bunker || return 1
     echo "Launching Claude Code inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker claude --dangerously-skip-permissions "${agent_args[@]}"
 }
@@ -246,7 +306,7 @@ bunker-codex() {
     local target_dir
     target_dir="$(resolve_target_dir "$target_input")"
 
-    start-bunker
+    start-bunker || return 1
     echo "Launching Codex CLI inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker codex "${agent_args[@]}"
 }
@@ -266,7 +326,7 @@ bunker-agy() {
     local target_dir
     target_dir="$(resolve_target_dir "$target_input")"
 
-    start-bunker
+    start-bunker || return 1
     echo "Launching Antigravity CLI inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker agy "${agent_args[@]}"
 }
@@ -287,7 +347,7 @@ bunker-qwen() {
     local target_dir
     target_dir="$(resolve_target_dir "$target_input")"
 
-    start-bunker
+    start-bunker || return 1
 
     echo "Launching Qwen Code inside AgentBunker in: $target_dir"
 
@@ -312,7 +372,7 @@ bunker-x() {
     local target_dir
     target_dir="$(resolve_target_dir "$target_input")"
 
-    start-bunker
+    start-bunker || return 1
 
     echo "Launching Grok CLI inside AgentBunker in: $target_dir"
 
