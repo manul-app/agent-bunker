@@ -187,9 +187,9 @@ bunker-shell [project_subpath]
 
 The container is kept between runs instead of being discarded on stop, so a
 macOS reboot no longer wipes anything an agent CLI wrote outside the mounted
-state directories. `./start.sh` recreates it automatically when the image or
-the project mounts change; run `./start.sh recreate` after editing `.env`, as a
-reused container keeps the environment it was created with.
+state directories. `./start.sh` recreates it automatically when the image, the
+project mounts or the environment from `.env` change; `./start.sh recreate`
+forces a fresh container at any time.
 
 ### Where agent state lives
 

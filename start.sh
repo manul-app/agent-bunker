@@ -19,7 +19,18 @@ mkdir -p "$BUNKER_CACHE"/.gopath-docker-cache
 mkdir -p "$BUNKER_CACHE"/.composer-docker-cache
 mkdir -p "$BUNKER_CACHE"/.playwright-docker-cache
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Locate this script even when it is sourced from zsh (the macOS default shell),
+# where BASH_SOURCE is unset. Without this SCRIPT_DIR silently becomes $PWD,
+# .env is never found and every setting falls back to its default.
+if [ -n "${BASH_SOURCE[0]}" ]; then
+    _bunker_src="${BASH_SOURCE[0]}"
+elif [ -n "$ZSH_VERSION" ]; then
+    eval '_bunker_src="${(%):-%x}"'
+else
+    _bunker_src="$0"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$_bunker_src")" && pwd)"
+unset _bunker_src
 
 # Resolve comma-separated PROJECTS_DIRS from .env or fallback to $HOME/projects
 resolve_project_dirs() {
@@ -34,7 +45,13 @@ resolve_project_dirs() {
     fi
 
     local raw_dirs="${PROJECTS_DIRS:-$HOME/projects}"
-    IFS=',' DIRS_ARRAY=($raw_dirs)
+    # Split on commas without touching IFS: zsh does not word-split unquoted
+    # variables, and a bare IFS= assignment would leak into the sourcing shell.
+    DIRS_ARRAY=()
+    local raw_dir
+    while IFS= read -r raw_dir; do
+        DIRS_ARRAY+=("$raw_dir")
+    done <<< "$(printf '%s' "$raw_dirs" | tr ',' '\n')"
 
     PROJECT_MOUNTS=()
     PROJECT_MAPPINGS=()
@@ -230,6 +247,37 @@ desired_mount_signature() {
     } | sort
 }
 
+# Environment passed into the container, as docker run -e arguments.
+# Built as an array so optional keys stay separate words in both bash and zsh
+# (zsh does not word-split an unquoted ${VAR:+-e VAR=...} expansion).
+build_container_env() {
+    CONTAINER_ENV=(
+        -e DB_HOST=host.docker.internal
+        -e DB_PORT=5432
+        -e OPENAI_API_KEY="$OPENAI_API_KEY"
+        -e GEMINI_API_KEY="$GEMINI_API_KEY"
+    )
+    local key
+    for key in ANTHROPIC_API_KEY BAILIAN_CODING_PLAN_API_KEY XAI_API_KEY GROK_DEPLOYMENT_KEY; do
+        local val
+        eval "val=\"\${$key}\""
+        [ -n "$val" ] && CONTAINER_ENV+=(-e "$key=$val")
+    done
+    CONTAINER_ENV+=(
+        -e GITLAB_URL="$GITLAB_URL"
+        -e GITLAB_HOST="$GITLAB_HOST"
+        -e GITLAB_TOKEN="$GITLAB_TOKEN"
+        -e GITLAB_USER="$GITLAB_USER"
+        -e ALLOW_LOCAL_DB_ACCESS="${ALLOW_LOCAL_DB_ACCESS:-true}"
+    )
+}
+
+# Checksum of the container environment, stored as a label on the container so
+# an edited .env is noticed and the container recreated instead of restarted.
+container_env_signature() {
+    printf '%s\n' "${CONTAINER_ENV[@]}" | cksum | cut -d' ' -f1
+}
+
 # Start bunker workspace container
 start-bunker() {
     ensure-docker || return 1
@@ -237,9 +285,22 @@ start-bunker() {
     resolve_project_dirs
     resolve_gitlab_config
     resolve_resource_limits
+    build_container_env
 
-    # Check if container is already running
+    local wanted_env
+    wanted_env="$(container_env_signature)"
+
+    # Check if container is already running. A running container is never
+    # recreated here: that would kill agent sessions open in other terminals.
+    # Warn instead when .env no longer matches what it was created with.
     if docker ps --format '{{.Names}}' | grep -q "^agent-bunker$"; then
+        local running_env
+        running_env="$(docker inspect -f '{{index .Config.Labels "bunker.env-signature"}}' agent-bunker 2>/dev/null)"
+        if [ "$running_env" != "$wanted_env" ]; then
+            echo "WARNING: the running agent-bunker container does not match .env" >&2
+            echo "         (created before .env was changed). Close agent sessions and run:" >&2
+            echo "         recreate-bunker   (or ./start.sh recreate)" >&2
+        fi
         return 0
     fi
 
@@ -252,21 +313,24 @@ start-bunker() {
     # Restart an existing stopped container rather than creating a new one.
     # The container is not --rm anymore, so its writable layer survives a host
     # reboot along with anything a CLI wrote outside the mounted state dirs.
-    # Recreate it only when the image or the project mounts changed under it.
+    # Recreate it only when the image, the project mounts or the environment
+    # changed under it.
     if docker ps -a --format '{{.Names}}' | grep -q "^agent-bunker$"; then
-        local container_image wanted_image container_mounts wanted_mounts
+        local container_image wanted_image container_mounts wanted_mounts container_env
         container_image="$(docker inspect -f '{{.Image}}' agent-bunker 2>/dev/null)"
         wanted_image="$(docker image inspect -f '{{.Id}}' "$image_name" 2>/dev/null)"
         container_mounts="$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}}{{"\n"}}{{end}}' agent-bunker 2>/dev/null | sort)"
         wanted_mounts="$(desired_mount_signature)"
+        container_env="$(docker inspect -f '{{index .Config.Labels "bunker.env-signature"}}' agent-bunker 2>/dev/null)"
 
         if [ -n "$container_image" ] && [ "$container_image" = "$wanted_image" ] \
-           && [ "$container_mounts" = "$wanted_mounts" ]; then
+           && [ "$container_mounts" = "$wanted_mounts" ] \
+           && [ "$container_env" = "$wanted_env" ]; then
             echo "Restarting the existing agent-bunker container..."
             docker start agent-bunker >/dev/null && return 0
             echo "Existing container failed to start, recreating it..."
         else
-            echo "Container is stale (image or mounts changed), recreating it..."
+            echo "Container is stale (image, mounts or .env changed), recreating it..."
         fi
 
         docker rm -f agent-bunker >/dev/null 2>&1 || true
@@ -286,19 +350,8 @@ start-bunker() {
         --shm-size="$BUNKER_SHM" \
         --cap-add=NET_ADMIN \
         --add-host=host.docker.internal:host-gateway \
-        -e DB_HOST=host.docker.internal \
-        -e DB_PORT=5432 \
-        -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-        -e GEMINI_API_KEY="$GEMINI_API_KEY" \
-        ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
-        ${BAILIAN_CODING_PLAN_API_KEY:+-e BAILIAN_CODING_PLAN_API_KEY="$BAILIAN_CODING_PLAN_API_KEY"} \
-        ${XAI_API_KEY:+-e XAI_API_KEY="$XAI_API_KEY"} \
-        ${GROK_DEPLOYMENT_KEY:+-e GROK_DEPLOYMENT_KEY="$GROK_DEPLOYMENT_KEY"} \
-        -e GITLAB_URL="$GITLAB_URL" \
-        -e GITLAB_HOST="$GITLAB_HOST" \
-        -e GITLAB_TOKEN="$GITLAB_TOKEN" \
-        -e GITLAB_USER="$GITLAB_USER" \
-        -e ALLOW_LOCAL_DB_ACCESS="${ALLOW_LOCAL_DB_ACCESS:-true}" \
+        --label bunker.env-signature="$wanted_env" \
+        "${CONTAINER_ENV[@]}" \
         -p 13000:3000 \
         -p 15173:5173 \
         -p 18000:8000 \
