@@ -84,6 +84,10 @@ ALLOW_LOCAL_DB_ACCESS=true
 GITLAB_USER=oauth2
 GITLAB_TOKEN=your_token_here
 
+# Git identity for commits inside the container (optional; defaults to "Agent Bunker")
+GIT_USER_NAME=
+GIT_USER_EMAIL=
+
 # xAI API key for Grok (optional; otherwise sign in on first `bunker-x`)
 XAI_API_KEY=
 ```

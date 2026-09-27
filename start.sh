@@ -258,7 +258,7 @@ build_container_env() {
         -e GEMINI_API_KEY="$GEMINI_API_KEY"
     )
     local key
-    for key in ANTHROPIC_API_KEY BAILIAN_CODING_PLAN_API_KEY XAI_API_KEY GROK_DEPLOYMENT_KEY; do
+    for key in ANTHROPIC_API_KEY BAILIAN_CODING_PLAN_API_KEY XAI_API_KEY GROK_DEPLOYMENT_KEY GIT_USER_NAME GIT_USER_EMAIL; do
         local val
         eval "val=\"\${$key}\""
         [ -n "$val" ] && CONTAINER_ENV+=(-e "$key=$val")
