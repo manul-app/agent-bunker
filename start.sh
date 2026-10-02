@@ -292,11 +292,17 @@ start-bunker() {
 
     # Check if container is already running. A running container is never
     # recreated here: that would kill agent sessions open in other terminals.
-    # Warn instead when .env no longer matches what it was created with.
+    # Warn instead when .env or PROJECTS_DIRS no longer match what it was
+    # created with: a project added to PROJECTS_DIRS is not mounted until then.
     if docker ps --format '{{.Names}}' | grep -q "^agent-bunker$"; then
-        local running_env
+        local running_env running_mounts
         running_env="$(docker inspect -f '{{index .Config.Labels "bunker.env-signature"}}' agent-bunker 2>/dev/null)"
-        if [ "$running_env" != "$wanted_env" ]; then
+        running_mounts="$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}}{{"\n"}}{{end}}' agent-bunker 2>/dev/null | sort)"
+        if [ "$running_mounts" != "$(desired_mount_signature)" ]; then
+            echo "WARNING: the running agent-bunker container was created with other project" >&2
+            echo "         mounts than PROJECTS_DIRS in .env, new directories are not mounted." >&2
+            echo "         Close agent sessions and run: recreate-bunker   (or ./start.sh recreate)" >&2
+        elif [ "$running_env" != "$wanted_env" ]; then
             echo "WARNING: the running agent-bunker container does not match .env" >&2
             echo "         (created before .env was changed). Close agent sessions and run:" >&2
             echo "         recreate-bunker   (or ./start.sh recreate)" >&2
@@ -380,11 +386,21 @@ stop-bunker() {
     docker stop agent-bunker 2>/dev/null || docker stop claude-workspace 2>/dev/null || true
 }
 
+# Fail early with a readable message when the target directory is not mounted
+# in the container, instead of the cryptic OCI "chdir ... no such file" error.
+ensure_target_dir() {
+    docker exec agent-bunker test -d "$1" && return 0
+    echo "ERROR: $1 does not exist inside agent-bunker." >&2
+    echo "       Add its host directory to PROJECTS_DIRS in .env and run: recreate-bunker" >&2
+    return 1
+}
+
 # Open bash shell inside container in target project directory
 bunker-shell() {
     local target_dir
     target_dir="$(resolve_target_dir "$1")"
     start-bunker || return 1
+    ensure_target_dir "$target_dir" || return 1
     echo "Opening bash shell inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker /bin/bash
 }
@@ -405,6 +421,7 @@ bunker() {
     target_dir="$(resolve_target_dir "$target_input")"
 
     start-bunker || return 1
+    ensure_target_dir "$target_dir" || return 1
     echo "Launching Claude Code inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker claude --dangerously-skip-permissions "${agent_args[@]}"
 }
@@ -425,6 +442,7 @@ bunker-codex() {
     target_dir="$(resolve_target_dir "$target_input")"
 
     start-bunker || return 1
+    ensure_target_dir "$target_dir" || return 1
     echo "Launching Codex CLI inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker codex "${agent_args[@]}"
 }
@@ -445,6 +463,7 @@ bunker-agy() {
     target_dir="$(resolve_target_dir "$target_input")"
 
     start-bunker || return 1
+    ensure_target_dir "$target_dir" || return 1
     echo "Launching Antigravity CLI inside AgentBunker in: $target_dir"
     docker exec -it -w "$target_dir" agent-bunker agy "${agent_args[@]}"
 }
@@ -466,6 +485,7 @@ bunker-qwen() {
     target_dir="$(resolve_target_dir "$target_input")"
 
     start-bunker || return 1
+    ensure_target_dir "$target_dir" || return 1
 
     echo "Launching Qwen Code inside AgentBunker in: $target_dir"
 
@@ -491,6 +511,7 @@ bunker-x() {
     target_dir="$(resolve_target_dir "$target_input")"
 
     start-bunker || return 1
+    ensure_target_dir "$target_dir" || return 1
 
     echo "Launching Grok CLI inside AgentBunker in: $target_dir"
 
