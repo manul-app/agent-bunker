@@ -75,7 +75,7 @@ Configure your project directories, firewall policies, and optional Git tokens:
 ```env
 # Comma-separated list of project directories to mount into the container
 # Supports multiple directories, tilde expansion (~), and absolute paths.
-PROJECTS_DIRS=~/projects, ~/work
+PROJECTS_DIRS="~/projects, ~/work"
 
 # Allow or block access to host machine and local databases (true/false)
 ALLOW_LOCAL_DB_ACCESS=true
